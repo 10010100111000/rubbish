@@ -1996,7 +1996,7 @@ async def worker(worker_id, proxy_manager):
             connector = ProxyConnector.from_url(proxy)
             async with aiohttp.ClientSession(connector=connector) as session:
                 print(f"[Worker {worker_id}] 使用代理 {proxy} 发起 POST 请求")
-                async with session.post(url_post, json=payload, timeout=10, ssl=False) as response:
+                async with session.post(url_post, json=payload, timeout=10) as response:
                     result = await response.json()
 
                     if response.status == 200 and result.get("code") == 200:
@@ -2016,7 +2016,7 @@ async def worker(worker_id, proxy_manager):
                         await asyncio.sleep(2)  # 模拟之前的 time.sleep(2)
 
                         print(f"[Worker {worker_id}] 使用代理 {proxy} 发起 PUT 请求")
-                        async with session.put(url_put, headers=headers, json=payload_put, timeout=10, ssl=False) as response_put:
+                        async with session.put(url_put, headers=headers, json=payload_put, timeout=10) as response_put:
                             if response_put.status == 200:
                                 print(f"[Worker {worker_id}] PUT 成功 password={payment_password}")
                             else:
