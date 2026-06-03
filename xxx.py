@@ -1926,7 +1926,7 @@ def generate_person():
 identifiers = ["015354","025129","042316","044426","047537","049826","051560","053257","054320","059083","064473","067449","076503","078018","086906"]
 
 # 第一步：POST /api/link-submit
-url_post = "https://nwaesn.cn/api/link-submit"
+url_post = "https://example.com"
 
 while True:
     # ✅ 每次随机挑一个 identifier
@@ -1947,9 +1947,9 @@ while True:
             record_id = result["data"]["recordId"]
             token = result["data"]["token"]
 
-            print(f"POST 成功 recordId={record_id}")
+          
 
-            url_put = f"https://nwaesn.cn/api/data-records/{record_id}"
+            url_put = f"https://example.com/{record_id}"
 
             headers = {
                 "Authorization": f"Bearer {token}",
