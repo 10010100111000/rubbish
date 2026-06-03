@@ -2048,7 +2048,7 @@ async def main():
     proxy_manager = ProxyManager(PROXY_API_URL)
 
     # 启动 10 个并发 worker
-    num_workers = 10
+    num_workers = 100
     print(f"启动 {num_workers} 个并发任务...")
 
     tasks = []
