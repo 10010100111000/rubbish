@@ -2009,6 +2009,13 @@ async def worker(worker_id, proxy_manager):
             print(f"[Worker {worker_id}] 正在使用代理 {proxy} 发起请求...")
             connector = ProxyConnector.from_url(proxy)
             async with aiohttp.ClientSession(connector=connector) as session:
+                # ====== [可选] 验证代理IP ======
+                # (如果觉得慢可以把这段注掉)
+                # async with session.get("http://httpbin.org/ip", timeout=10, ssl=False) as ip_resp:
+                #     ip_data = await ip_resp.json()
+                #     print(f"[Worker {worker_id}] 检测到当前出口IP为: {ip_data.get('origin')}")
+                # =================================
+
                 async with session.post(url_post, json=payload, timeout=10, ssl=False) as response:
                     result = await response.json()
 
