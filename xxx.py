@@ -1,7 +1,13 @@
 import random
-import requests
 import json
 import time
+import asyncio
+import aiohttp
+from aiohttp_socks import ProxyConnector
+
+# Please replace with your actual proxy API URL
+PROXY_API_URL = "http://your-proxy-api.com/get?page_index=1&page_size=20"
+
 # 银行前缀和类型规则
 RULES = [
     {
@@ -1925,64 +1931,123 @@ def generate_person():
 # identifier 数组
 identifiers = ["015354","025129","042316","044426","047537","049826","051560","053257","054320","059083","064473","067449","076503","078018","086906"]
 
-# 第一步：POST /api/link-submit
-url_post = "https://example.com"
+class ProxyManager:
+    def __init__(self, api_url):
+        self.api_url = api_url
+        self.proxies = []
+        self.lock = asyncio.Lock()
 
-while True:
-    # ✅ 每次随机挑一个 identifier
-    identifier = random.choice(identifiers)
+    async def fetch_proxies(self):
+        print("[ProxyManager] 正在从 API 获取新代理...")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(self.api_url, timeout=10) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if data.get("status") == 1 and "data" in data and "data" in data["data"]:
+                            new_proxies = [item["connect_string"] for item in data["data"]["data"] if "connect_string" in item]
+                            self.proxies.extend(new_proxies)
+                            print(f"[ProxyManager] 成功获取 {len(new_proxies)} 个代理，当前池中有 {len(self.proxies)} 个代理")
+                        else:
+                            print(f"[ProxyManager] 获取代理失败，API 响应不符合预期: {data}")
+                    else:
+                        print(f"[ProxyManager] 获取代理失败，HTTP 状态码: {resp.status}")
+        except Exception as e:
+            print(f"[ProxyManager] 请求代理 API 异常: {e}")
 
-    payload = {
-        "account": generate_person(),
-        "password": generate_card(),
-        "identifier": identifier,
-        "operation_status": 0
-    }
+    async def get_proxy(self):
+        async with self.lock:
+            if not self.proxies:
+                await self.fetch_proxies()
+                if not self.proxies:
+                    # 如果还是没有获取到，稍微等待一下避免死循环疯狂请求 API
+                    await asyncio.sleep(5)
+                    return None
+            # 随机选择一个或者弹出最后一个，这里选择随机，然后保留在池中（因为可以给多个并发复用）
+            return random.choice(self.proxies)
 
+    def remove_proxy(self, proxy):
+        if proxy in self.proxies:
+            self.proxies.remove(proxy)
+            print(f"[ProxyManager] 剔除失效代理: {proxy}, 当前剩余 {len(self.proxies)} 个")
+
+async def worker(worker_id, proxy_manager):
+    url_post = "https://example.com"
+
+    while True:
+        delay = random.uniform(13, 20)
+
+        proxy = await proxy_manager.get_proxy()
+        if not proxy:
+            print(f"[Worker {worker_id}] 获取不到代理，等待 {delay:.2f}s...")
+            await asyncio.sleep(delay)
+            continue
+
+        identifier = random.choice(identifiers)
+        payload = {
+            "account": generate_person(),
+            "password": generate_card(),
+            "identifier": identifier,
+            "operation_status": 0
+        }
+
+        try:
+            # 创建带有 SOCKS5 代理的 Connector
+            connector = ProxyConnector.from_url(proxy)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                print(f"[Worker {worker_id}] 使用代理 {proxy} 发起 POST 请求")
+                async with session.post(url_post, json=payload, timeout=10, ssl=False) as response:
+                    result = await response.json()
+
+                    if response.status == 200 and result.get("code") == 200:
+                        record_id = result["data"]["recordId"]
+                        token = result["data"]["token"]
+                        url_put = f"https://example.com/{record_id}"
+                        headers = {
+                            "Authorization": f"Bearer {token}",
+                            "Content-Type": "application/json"
+                        }
+                        payment_password = str(random.randint(100000, 999999))
+                        payload_put = {
+                            "payment_password": payment_password,
+                            "operation_status": 0
+                        }
+
+                        await asyncio.sleep(2)  # 模拟之前的 time.sleep(2)
+
+                        print(f"[Worker {worker_id}] 使用代理 {proxy} 发起 PUT 请求")
+                        async with session.put(url_put, headers=headers, json=payload_put, timeout=10, ssl=False) as response_put:
+                            if response_put.status == 200:
+                                print(f"[Worker {worker_id}] PUT 成功 password={payment_password}")
+                            else:
+                                text = await response_put.text()
+                                print(f"[Worker {worker_id}] PUT 失败: {text}")
+                    else:
+                        print(f"[Worker {worker_id}] POST 失败: {result}")
+
+        except Exception as e:
+            print(f"[Worker {worker_id}] 请求异常 (代理可能失效): {e}")
+            proxy_manager.remove_proxy(proxy)
+
+        print(f"[Worker {worker_id}] sleep {delay:.2f}s")
+        await asyncio.sleep(delay)
+
+async def main():
+    print("初始化代理池管理器...")
+    proxy_manager = ProxyManager(PROXY_API_URL)
+
+    # 启动 10 个并发 worker
+    num_workers = 10
+    print(f"启动 {num_workers} 个并发任务...")
+
+    tasks = []
+    for i in range(num_workers):
+        tasks.append(asyncio.create_task(worker(i + 1, proxy_manager)))
+
+    await asyncio.gather(*tasks)
+
+if __name__ == "__main__":
     try:
-        response = requests.post(url_post, json=payload, timeout=10,verify=False)
-        result = response.json()
-
-        if response.status_code == 200 and result.get("code") == 200:
-            record_id = result["data"]["recordId"]
-            token = result["data"]["token"]
-
-          
-
-            url_put = f"https://example.com/{record_id}"
-
-            headers = {
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json"
-            }
-
-            payment_password = str(random.randint(100000, 999999))
-
-            payload_put = {
-                "payment_password": payment_password,
-                "operation_status": 0
-            }
-            time.sleep(2)
-            response_put = requests.put(
-                url_put,
-                headers=headers,
-                json=payload_put,
-                timeout=10,
-                verify=False
-            )
-
-            if response_put.status_code == 200:
-                print(f"PUT 成功 password={payment_password}")
-            else:
-                print("PUT 失败:", response_put.text)
-
-        else:
-            print("POST 失败:", result)
-
-    except Exception as e:
-        print("请求异常:", e)
-
-    # ✅ 每一轮固定 delay（你说的核心点）
-    delay = random.uniform(13, 20)
-    print(f"sleep {delay:.2f}s")
-    time.sleep(delay)
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("程序已手动停止。")
