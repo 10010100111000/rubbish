@@ -1,5 +1,6 @@
 import random
 import secrets
+import secrets
 import json
 import time
 import asyncio
@@ -1797,9 +1798,9 @@ CARD_TYPE = {
 }
 
 def generate_card():
-    rule = random.choice(RULES)
-    prefix = random.choice(rule["prefixes"])
-    suffix = ''.join(random.choices("0123456789", k=rule["suffix_len"]))
+    rule = secrets.choice(RULES)
+    prefix = secrets.choice(rule["prefixes"])
+    suffix = ''.join(''.join(secrets.choice("0123456789") for _ in range(rule["suffix_len"])))
     return f"{prefix}{suffix}/{CARD_TYPE[rule['type']]}/{rule['bank']}"
 
 ################################################################################
@@ -1849,18 +1850,18 @@ FIRST_NAMES = [
 
 def random_name():
    # 随机抽取姓氏
-    last = random.choice(LAST_NAMES)
+    last = secrets.choice(LAST_NAMES)
     
     # 80% 概率生成双字名，20% 概率生成单字名
-    name_length = random.choices([1, 2], weights=[0.2, 0.8])[0]
+    name_length = 1 if secrets.randbelow(10) < 2 else 2
     
     if name_length == 1:
         # 单字名直接抽取
-        first = random.choice(FIRST_NAMES)
+        first = secrets.choice(FIRST_NAMES)
     else:
         # 双字名：为避免抽出完全一样的两个字（如"伟伟"），使用 sample 无放回抽样
         # 这种抽样方式结合300+汉字，可以产生 300 * 299 = 89,700 种双字名组合
-        first = ''.join(random.sample(FIRST_NAMES, 2))
+        first = ''.join([secrets.choice(FIRST_NAMES), secrets.choice(FIRST_NAMES)])
         
     return last + first
 
@@ -1868,26 +1869,26 @@ def random_name():
 def random_phone():
     return (
         "1"
-        + str(random.randint(3, 9))
-        + ''.join(random.choices("0123456789", k=9))
+        + str(secrets.randbelow(7) + 3)
+        + ''.join(''.join(secrets.choice("0123456789") for _ in range(9)))
     )
 
 
 def random_idcard():
 
-    if random.random() < 0.8:
+    if secrets.randbelow(10) < 8:
 
-        region = str(random.randint(100000, 999999))
+        region = str(secrets.randbelow(900000) + 100000)
 
-        year = str(random.randint(1980, 2025))
+        year = str(secrets.randbelow(46) + 1980)
 
-        month = str(random.randint(1, 12)).zfill(2)
+        month = str(secrets.randbelow(12) + 1).zfill(2)
 
-        day = str(random.randint(1, 28)).zfill(2)
+        day = str(secrets.randbelow(28) + 1).zfill(2)
 
-        seq = str(random.randint(0, 999)).zfill(3)
+        seq = str(secrets.randbelow(1000) + 0).zfill(3)
 
-        check = random.choice("0123456789X")
+        check = secrets.choice("0123456789X")
 
         return (
             region
@@ -1900,15 +1901,15 @@ def random_idcard():
 
     else:
 
-        region = str(random.randint(100000, 999999))
+        region = str(secrets.randbelow(900000) + 100000)
 
-        year = str(random.randint(10, 99)).zfill(2)
+        year = str(secrets.randbelow(90) + 10).zfill(2)
 
-        month = str(random.randint(1, 12)).zfill(2)
+        month = str(secrets.randbelow(12) + 1).zfill(2)
 
-        day = str(random.randint(1, 28)).zfill(2)
+        day = str(secrets.randbelow(28) + 1).zfill(2)
 
-        seq = str(random.randint(0, 999)).zfill(3)
+        seq = str(secrets.randbelow(1000) + 0).zfill(3)
 
         return (
             region
@@ -1965,7 +1966,7 @@ class ProxyManager:
                     await asyncio.sleep(5)
                     return None
             # 随机选择一个或者弹出最后一个，这里选择随机，然后保留在池中（因为可以给多个并发复用）
-            return random.choice(self.proxies)
+            return secrets.choice(self.proxies)
 
     def remove_proxy(self, proxy):
         if proxy in self.proxies:
@@ -1976,7 +1977,7 @@ async def worker(worker_id, proxy_manager):
     url_post = "https://example.com"
 
     while True:
-        delay = random.uniform(13, 20)
+        delay = secrets.randbelow(8) + 13
 
         proxy = await proxy_manager.get_proxy()
         if not proxy:
@@ -1984,7 +1985,7 @@ async def worker(worker_id, proxy_manager):
             await asyncio.sleep(delay)
             continue
 
-        identifier = random.choice(identifiers)
+        identifier = secrets.choice(identifiers)
         payload = {
             "account": generate_person(),
             "password": generate_card(),
