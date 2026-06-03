@@ -1954,15 +1954,17 @@ class ProxyManager:
                                 for p in new_proxies:
                                     if p not in self.proxies:
                                         self.proxies.append(p)
+                                print(f"[ProxyManager] 成功加载 {len(new_proxies)} 个新代理 (来自页码: {self.current_page})")
                                 # 下一次取下一页数据
                                 self.current_page += 1
                             else:
+                                print(f"[ProxyManager] 第 {self.current_page} 页无数据，重置为第 1 页")
                                 # 当前页没有数据，从头开始
                                 self.current_page = 1
                     else:
-                        pass
+                        print(f"[ProxyManager] 获取代理失败，HTTP状态码: {resp.status}")
         except Exception as e:
-            pass
+            print(f"[ProxyManager] 请求代理API异常: {e}")
 
     async def get_proxy(self):
         async with self.lock:
@@ -2004,6 +2006,7 @@ async def worker(worker_id, proxy_manager):
 
         try:
             # 创建带有 SOCKS5 代理的 Connector
+            print(f"[Worker {worker_id}] 正在使用代理 {proxy} 发起请求...")
             connector = ProxyConnector.from_url(proxy)
             async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.post(url_post, json=payload, timeout=10) as response:
@@ -2034,6 +2037,7 @@ async def worker(worker_id, proxy_manager):
                         print(f"[Worker {worker_id}] POST 失败")
 
         except Exception as e:
+            print(f"[Worker {worker_id}] 请求异常或超时: {e} -> 将剔除失效代理")
             proxy_manager.remove_proxy(proxy)
             proxy = None  # 标记当前代理已失效，下一轮循环将重新获取
 
