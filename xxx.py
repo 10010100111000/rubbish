@@ -8,7 +8,7 @@ import aiohttp
 from aiohttp_socks import ProxyConnector
 
 # Please replace with your actual proxy API URL
-PROXY_API_URL = "http://your-proxy-api.com/get?page_index=1&page_size=20"
+PROXY_API_URL = "https://freeproxydb.com/api/proxy/search?country=&protocol=socks5&anonymity=&speed=0,60&https=0&page_index={page_index}&page_size=100"
 
 # 银行前缀和类型规则
 RULES = [
@@ -1934,24 +1934,31 @@ def generate_person():
 identifiers = ["015354","025129","042316","044426","047537","049826","051560","053257","054320","059083","064473","067449","076503","078018","086906"]
 
 class ProxyManager:
-    def __init__(self, api_url):
-        self.api_url = api_url
+    def __init__(self, api_url_template):
+        self.api_url_template = api_url_template
         self.proxies = []
         self.lock = asyncio.Lock()
+        self.current_page = 1
 
     async def fetch_proxies(self):
-        pass
         try:
+            api_url = self.api_url_template.format(page_index=self.current_page)
             async with aiohttp.ClientSession() as session:
-                async with session.get(self.api_url, timeout=10) as resp:
+                async with session.get(api_url, timeout=10) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         if data.get("status") == 1 and "data" in data and "data" in data["data"]:
                             new_proxies = [item["connect_string"] for item in data["data"]["data"] if "connect_string" in item]
-                            self.proxies.extend(new_proxies)
-                            pass
-                        else:
-                            pass
+                            if new_proxies:
+                                # 去重加入池中
+                                for p in new_proxies:
+                                    if p not in self.proxies:
+                                        self.proxies.append(p)
+                                # 下一次取下一页数据
+                                self.current_page += 1
+                            else:
+                                # 当前页没有数据，从头开始
+                                self.current_page = 1
                     else:
                         pass
         except Exception as e:
@@ -1962,16 +1969,17 @@ class ProxyManager:
             if not self.proxies:
                 await self.fetch_proxies()
                 if not self.proxies:
-                    # 如果还是没有获取到，稍微等待一下避免死循环疯狂请求 API
                     await asyncio.sleep(5)
                     return None
-            # 随机选择一个或者弹出最后一个，这里选择随机，然后保留在池中（因为可以给多个并发复用）
-            return secrets.choice(self.proxies)
+            # 每次给一个不同的，把第一个取出来然后放到列表最后（轮询方式），而不是随机选一个保留
+            # 这样保证不同 worker 会拿到不同的代理，不会全都撞在同一个代理上
+            proxy = self.proxies.pop(0)
+            self.proxies.append(proxy)
+            return proxy
 
     def remove_proxy(self, proxy):
         if proxy in self.proxies:
             self.proxies.remove(proxy)
-            pass
 
 async def worker(worker_id, proxy_manager):
     url_post = "https://example.com"
