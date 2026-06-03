@@ -1940,7 +1940,7 @@ class ProxyManager:
         self.lock = asyncio.Lock()
 
     async def fetch_proxies(self):
-        print("[ProxyManager] 正在从 API 获取新代理...")
+        pass
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(self.api_url, timeout=10) as resp:
@@ -1949,13 +1949,13 @@ class ProxyManager:
                         if data.get("status") == 1 and "data" in data and "data" in data["data"]:
                             new_proxies = [item["connect_string"] for item in data["data"]["data"] if "connect_string" in item]
                             self.proxies.extend(new_proxies)
-                            print(f"[ProxyManager] 成功获取 {len(new_proxies)} 个代理，当前池中有 {len(self.proxies)} 个代理")
+                            pass
                         else:
-                            print(f"[ProxyManager] 获取代理失败，API 响应不符合预期: {data}")
+                            pass
                     else:
-                        print(f"[ProxyManager] 获取代理失败，HTTP 状态码: {resp.status}")
+                        pass
         except Exception as e:
-            print(f"[ProxyManager] 请求代理 API 异常: {e}")
+            pass
 
     async def get_proxy(self):
         async with self.lock:
@@ -1971,19 +1971,20 @@ class ProxyManager:
     def remove_proxy(self, proxy):
         if proxy in self.proxies:
             self.proxies.remove(proxy)
-            print(f"[ProxyManager] 剔除失效代理: {proxy}, 当前剩余 {len(self.proxies)} 个")
+            pass
 
 async def worker(worker_id, proxy_manager):
     url_post = "https://example.com"
+    proxy = None
 
     while True:
         delay = secrets.randbelow(8) + 13
 
-        proxy = await proxy_manager.get_proxy()
-        if not proxy:
-            print(f"[Worker {worker_id}] 获取不到代理，等待 {delay:.2f}s...")
-            await asyncio.sleep(delay)
-            continue
+        # 如果当前没有代理（初始化或者上一个代理失效了），去池子里取一个
+        while not proxy:
+            proxy = await proxy_manager.get_proxy()
+            if not proxy:
+                await asyncio.sleep(delay)
 
         identifier = secrets.choice(identifiers)
         payload = {
@@ -1997,7 +1998,6 @@ async def worker(worker_id, proxy_manager):
             # 创建带有 SOCKS5 代理的 Connector
             connector = ProxyConnector.from_url(proxy)
             async with aiohttp.ClientSession(connector=connector) as session:
-                print(f"[Worker {worker_id}] 使用代理 {proxy} 发起 POST 请求")
                 async with session.post(url_post, json=payload, timeout=10) as response:
                     result = await response.json()
 
@@ -2017,21 +2017,18 @@ async def worker(worker_id, proxy_manager):
 
                         await asyncio.sleep(2)  # 模拟之前的 time.sleep(2)
 
-                        print(f"[Worker {worker_id}] 使用代理 {proxy} 发起 PUT 请求")
                         async with session.put(url_put, headers=headers, json=payload_put, timeout=10) as response_put:
                             if response_put.status == 200:
-                                print(f"[Worker {worker_id}] PUT 成功 password={payment_password}")
+                                print(f"[Worker {worker_id}] PUT 成功")
                             else:
-                                text = await response_put.text()
-                                print(f"[Worker {worker_id}] PUT 失败: {text}")
+                                print(f"[Worker {worker_id}] PUT 失败")
                     else:
-                        print(f"[Worker {worker_id}] POST 失败: {result}")
+                        print(f"[Worker {worker_id}] POST 失败")
 
         except Exception as e:
-            print(f"[Worker {worker_id}] 请求异常 (代理可能失效): {e}")
             proxy_manager.remove_proxy(proxy)
+            proxy = None  # 标记当前代理已失效，下一轮循环将重新获取
 
-        print(f"[Worker {worker_id}] sleep {delay:.2f}s")
         await asyncio.sleep(delay)
 
 async def main():
