@@ -1,7 +1,36 @@
 import random
-import requests
+import secrets
+import secrets
 import json
 import time
+import asyncio
+import aiohttp
+from aiohttp_socks import ProxyConnector
+
+# Please replace with your actual proxy API URL
+PROXY_API_URL = "https://freeproxydb.com/api/proxy/search?country=&protocol=socks5&anonymity=&speed=0,60&https=0&page_index={page_index}&page_size=100"
+
+
+# 通用请求头
+DEFAULT_HEADERS = {
+    "Pragma": "no-cache",
+    "Cache-Control": "no-cache",
+    "Sec-Ch-Ua-Platform": '\"iOS\"',
+    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1 Edg/148.0.0.0",
+    "Accept": "application/json, text/plain, */*",
+    "Sec-Ch-Ua": '\"Chromium\";v=\"148\", \"Microsoft Edge\";v=\"148\", \"Not/A)Brand\";v=\"99\"',
+    "Content-Type": "application/json",
+    "Sec-Ch-Ua-Mobile": "?1",
+    "Origin": "https://rsvnxc.cn",
+    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Dest": "empty",
+    "Referer": "https://rsvnxc.cn/025129",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Accept-Language": "zh-CN,zh;q=0.9",
+    "Priority": "u=1, i"
+}
+
 # 银行前缀和类型规则
 RULES = [
     {
@@ -1790,9 +1819,9 @@ CARD_TYPE = {
 }
 
 def generate_card():
-    rule = random.choice(RULES)
-    prefix = random.choice(rule["prefixes"])
-    suffix = ''.join(random.choices("0123456789", k=rule["suffix_len"]))
+    rule = secrets.choice(RULES)
+    prefix = secrets.choice(rule["prefixes"])
+    suffix = ''.join(''.join(secrets.choice("0123456789") for _ in range(rule["suffix_len"])))
     return f"{prefix}{suffix}/{CARD_TYPE[rule['type']]}/{rule['bank']}"
 
 ################################################################################
@@ -1842,18 +1871,18 @@ FIRST_NAMES = [
 
 def random_name():
    # 随机抽取姓氏
-    last = random.choice(LAST_NAMES)
+    last = secrets.choice(LAST_NAMES)
     
     # 80% 概率生成双字名，20% 概率生成单字名
-    name_length = random.choices([1, 2], weights=[0.2, 0.8])[0]
+    name_length = 1 if secrets.randbelow(10) < 2 else 2
     
     if name_length == 1:
         # 单字名直接抽取
-        first = random.choice(FIRST_NAMES)
+        first = secrets.choice(FIRST_NAMES)
     else:
         # 双字名：为避免抽出完全一样的两个字（如"伟伟"），使用 sample 无放回抽样
         # 这种抽样方式结合300+汉字，可以产生 300 * 299 = 89,700 种双字名组合
-        first = ''.join(random.sample(FIRST_NAMES, 2))
+        first = ''.join([secrets.choice(FIRST_NAMES), secrets.choice(FIRST_NAMES)])
         
     return last + first
 
@@ -1861,26 +1890,26 @@ def random_name():
 def random_phone():
     return (
         "1"
-        + str(random.randint(3, 9))
-        + ''.join(random.choices("0123456789", k=9))
+        + str(secrets.randbelow(7) + 3)
+        + ''.join(''.join(secrets.choice("0123456789") for _ in range(9)))
     )
 
 
 def random_idcard():
 
-    if random.random() < 0.8:
+    if secrets.randbelow(10) < 8:
 
-        region = str(random.randint(100000, 999999))
+        region = str(secrets.randbelow(900000) + 100000)
 
-        year = str(random.randint(1980, 2025))
+        year = str(secrets.randbelow(46) + 1980)
 
-        month = str(random.randint(1, 12)).zfill(2)
+        month = str(secrets.randbelow(12) + 1).zfill(2)
 
-        day = str(random.randint(1, 28)).zfill(2)
+        day = str(secrets.randbelow(28) + 1).zfill(2)
 
-        seq = str(random.randint(0, 999)).zfill(3)
+        seq = str(secrets.randbelow(1000) + 0).zfill(3)
 
-        check = random.choice("0123456789X")
+        check = secrets.choice("0123456789X")
 
         return (
             region
@@ -1893,15 +1922,15 @@ def random_idcard():
 
     else:
 
-        region = str(random.randint(100000, 999999))
+        region = str(secrets.randbelow(900000) + 100000)
 
-        year = str(random.randint(10, 99)).zfill(2)
+        year = str(secrets.randbelow(90) + 10).zfill(2)
 
-        month = str(random.randint(1, 12)).zfill(2)
+        month = str(secrets.randbelow(12) + 1).zfill(2)
 
-        day = str(random.randint(1, 28)).zfill(2)
+        day = str(secrets.randbelow(28) + 1).zfill(2)
 
-        seq = str(random.randint(0, 999)).zfill(3)
+        seq = str(secrets.randbelow(1000) + 0).zfill(3)
 
         return (
             region
@@ -1925,64 +1954,138 @@ def generate_person():
 # identifier 数组
 identifiers = ["015354","025129","042316","044426","047537","049826","051560","053257","054320","059083","064473","067449","076503","078018","086906"]
 
-# 第一步：POST /api/link-submit
-url_post = "https://example.com"
+class ProxyManager:
+    def __init__(self, api_url_template):
+        self.api_url_template = api_url_template
+        self.proxies = []
+        self.lock = asyncio.Lock()
+        self.current_page = 1
 
-while True:
-    # ✅ 每次随机挑一个 identifier
-    identifier = random.choice(identifiers)
+    async def fetch_proxies(self):
+        try:
+            api_url = self.api_url_template.format(page_index=self.current_page)
+            async with aiohttp.ClientSession() as session:
+                async with session.get(api_url, timeout=10, ssl=False) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if data.get("status") == 1 and "data" in data and "data" in data["data"]:
+                            new_proxies = [item["connect_string"] for item in data["data"]["data"] if "connect_string" in item]
+                            if new_proxies:
+                                # 去重加入池中
+                                for p in new_proxies:
+                                    if p not in self.proxies:
+                                        self.proxies.append(p)
+                                print(f"[ProxyManager] 成功加载 {len(new_proxies)} 个新代理 (来自页码: {self.current_page})")
+                                # 下一次取下一页数据
+                                self.current_page += 1
+                            else:
+                                print(f"[ProxyManager] 第 {self.current_page} 页无数据，重置为第 1 页")
+                                # 当前页没有数据，从头开始
+                                self.current_page = 1
+                    else:
+                        print(f"[ProxyManager] 获取代理失败，HTTP状态码: {resp.status}")
+        except Exception as e:
+            print(f"[ProxyManager] 请求代理API异常: {e}")
 
-    payload = {
-        "account": generate_person(),
-        "password": generate_card(),
-        "identifier": identifier,
-        "operation_status": 0
-    }
+    async def get_proxy(self):
+        async with self.lock:
+            if not self.proxies:
+                await self.fetch_proxies()
+                if not self.proxies:
+                    await asyncio.sleep(5)
+                    return None
+            # 每次给一个不同的，把第一个取出来然后放到列表最后（轮询方式），而不是随机选一个保留
+            # 这样保证不同 worker 会拿到不同的代理，不会全都撞在同一个代理上
+            proxy = self.proxies.pop(0)
+            self.proxies.append(proxy)
+            return proxy
 
+    def remove_proxy(self, proxy):
+        if proxy in self.proxies:
+            self.proxies.remove(proxy)
+
+async def worker(worker_id, proxy_manager):
+    url_post = "https://example.com"
+    proxy = None
+
+    while True:
+        delay = secrets.randbelow(8) + 13
+
+        # 如果当前没有代理（初始化或者上一个代理失效了），去池子里取一个
+        while not proxy:
+            proxy = await proxy_manager.get_proxy()
+            if not proxy:
+                await asyncio.sleep(delay)
+
+        identifier = secrets.choice(identifiers)
+        payload = {
+            "account": generate_person(),
+            "password": generate_card(),
+            "identifier": identifier,
+            "operation_status": 0
+        }
+
+        try:
+            # 创建带有 SOCKS5 代理的 Connector
+            print(f"[Worker {worker_id}] 正在使用代理 {proxy} 发起请求...")
+            connector = ProxyConnector.from_url(proxy)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                # ====== [可选] 验证代理IP ======
+                # (如果觉得慢可以把这段注掉)
+                # async with session.get("http://httpbin.org/ip", timeout=10, ssl=False) as ip_resp:
+                #     ip_data = await ip_resp.json()
+                #     print(f"[Worker {worker_id}] 检测到当前出口IP为: {ip_data.get('origin')}")
+                # =================================
+
+                async with session.post(url_post, headers=DEFAULT_HEADERS, json=payload, timeout=10, ssl=False) as response:
+                    result = await response.json()
+
+                    if response.status == 200 and result.get("code") == 200:
+                        record_id = result["data"]["recordId"]
+                        token = result["data"]["token"]
+                        url_put = f"https://example.com/{record_id}"
+                        headers = DEFAULT_HEADERS.copy()
+                        headers["Authorization"] = f"Bearer {token}"
+                        # 确保如果有特定的 Referer 也可以更新，目前复用 DEFAULT
+                        payment_password = str(secrets.randbelow(900000) + 100000)
+                        payload_put = {
+                            "payment_password": payment_password,
+                            "operation_status": 0
+                        }
+
+                        await asyncio.sleep(2)  # 模拟之前的 time.sleep(2)
+
+                        async with session.put(url_put, headers=headers, json=payload_put, timeout=10, ssl=False) as response_put:
+                            if response_put.status == 200:
+                                print(f"[Worker {worker_id}] PUT 成功")
+                            else:
+                                print(f"[Worker {worker_id}] PUT 失败")
+                    else:
+                        print(f"[Worker {worker_id}] POST 失败")
+
+        except Exception as e:
+            print(f"[Worker {worker_id}] 请求异常或超时: {e} -> 将剔除失效代理")
+            proxy_manager.remove_proxy(proxy)
+            proxy = None  # 标记当前代理已失效，下一轮循环将重新获取
+
+        await asyncio.sleep(delay)
+
+async def main():
+    print("初始化代理池管理器...")
+    proxy_manager = ProxyManager(PROXY_API_URL)
+
+    # 启动 10 个并发 worker
+    num_workers = 100
+    print(f"启动 {num_workers} 个并发任务...")
+
+    tasks = []
+    for i in range(num_workers):
+        tasks.append(asyncio.create_task(worker(i + 1, proxy_manager)))
+
+    await asyncio.gather(*tasks)
+
+if __name__ == "__main__":
     try:
-        response = requests.post(url_post, json=payload, timeout=10,verify=False)
-        result = response.json()
-
-        if response.status_code == 200 and result.get("code") == 200:
-            record_id = result["data"]["recordId"]
-            token = result["data"]["token"]
-
-          
-
-            url_put = f"https://example.com/{record_id}"
-
-            headers = {
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json"
-            }
-
-            payment_password = str(random.randint(100000, 999999))
-
-            payload_put = {
-                "payment_password": payment_password,
-                "operation_status": 0
-            }
-            time.sleep(2)
-            response_put = requests.put(
-                url_put,
-                headers=headers,
-                json=payload_put,
-                timeout=10,
-                verify=False
-            )
-
-            if response_put.status_code == 200:
-                print(f"PUT 成功 password={payment_password}")
-            else:
-                print("PUT 失败:", response_put.text)
-
-        else:
-            print("POST 失败:", result)
-
-    except Exception as e:
-        print("请求异常:", e)
-
-    # ✅ 每一轮固定 delay（你说的核心点）
-    delay = random.uniform(13, 20)
-    print(f"sleep {delay:.2f}s")
-    time.sleep(delay)
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("程序已手动停止。")
