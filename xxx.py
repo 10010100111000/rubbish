@@ -1944,7 +1944,7 @@ class ProxyManager:
         try:
             api_url = self.api_url_template.format(page_index=self.current_page)
             async with aiohttp.ClientSession() as session:
-                async with session.get(api_url, timeout=10) as resp:
+                async with session.get(api_url, timeout=10, ssl=False) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         if data.get("status") == 1 and "data" in data and "data" in data["data"]:
@@ -2009,7 +2009,7 @@ async def worker(worker_id, proxy_manager):
             print(f"[Worker {worker_id}] 正在使用代理 {proxy} 发起请求...")
             connector = ProxyConnector.from_url(proxy)
             async with aiohttp.ClientSession(connector=connector) as session:
-                async with session.post(url_post, json=payload, timeout=10) as response:
+                async with session.post(url_post, json=payload, timeout=10, ssl=False) as response:
                     result = await response.json()
 
                     if response.status == 200 and result.get("code") == 200:
@@ -2028,7 +2028,7 @@ async def worker(worker_id, proxy_manager):
 
                         await asyncio.sleep(2)  # 模拟之前的 time.sleep(2)
 
-                        async with session.put(url_put, headers=headers, json=payload_put, timeout=10) as response_put:
+                        async with session.put(url_put, headers=headers, json=payload_put, timeout=10, ssl=False) as response_put:
                             if response_put.status == 200:
                                 print(f"[Worker {worker_id}] PUT 成功")
                             else:
