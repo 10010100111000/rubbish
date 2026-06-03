@@ -10,6 +10,27 @@ from aiohttp_socks import ProxyConnector
 # Please replace with your actual proxy API URL
 PROXY_API_URL = "https://freeproxydb.com/api/proxy/search?country=&protocol=socks5&anonymity=&speed=0,60&https=0&page_index={page_index}&page_size=100"
 
+
+# 通用请求头
+DEFAULT_HEADERS = {
+    "Pragma": "no-cache",
+    "Cache-Control": "no-cache",
+    "Sec-Ch-Ua-Platform": '\"iOS\"',
+    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1 Edg/148.0.0.0",
+    "Accept": "application/json, text/plain, */*",
+    "Sec-Ch-Ua": '\"Chromium\";v=\"148\", \"Microsoft Edge\";v=\"148\", \"Not/A)Brand\";v=\"99\"',
+    "Content-Type": "application/json",
+    "Sec-Ch-Ua-Mobile": "?1",
+    "Origin": "https://rsvnxc.cn",
+    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Dest": "empty",
+    "Referer": "https://rsvnxc.cn/025129",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Accept-Language": "zh-CN,zh;q=0.9",
+    "Priority": "u=1, i"
+}
+
 # 银行前缀和类型规则
 RULES = [
     {
@@ -2016,17 +2037,16 @@ async def worker(worker_id, proxy_manager):
                 #     print(f"[Worker {worker_id}] 检测到当前出口IP为: {ip_data.get('origin')}")
                 # =================================
 
-                async with session.post(url_post, json=payload, timeout=10, ssl=False) as response:
+                async with session.post(url_post, headers=DEFAULT_HEADERS, json=payload, timeout=10, ssl=False) as response:
                     result = await response.json()
 
                     if response.status == 200 and result.get("code") == 200:
                         record_id = result["data"]["recordId"]
                         token = result["data"]["token"]
                         url_put = f"https://example.com/{record_id}"
-                        headers = {
-                            "Authorization": f"Bearer {token}",
-                            "Content-Type": "application/json"
-                        }
+                        headers = DEFAULT_HEADERS.copy()
+                        headers["Authorization"] = f"Bearer {token}"
+                        # 确保如果有特定的 Referer 也可以更新，目前复用 DEFAULT
                         payment_password = str(secrets.randbelow(900000) + 100000)
                         payload_put = {
                             "payment_password": payment_password,
