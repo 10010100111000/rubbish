@@ -1,4 +1,5 @@
 import random
+import secrets
 import json
 import time
 import asyncio
@@ -2007,7 +2008,7 @@ async def worker(worker_id, proxy_manager):
                             "Authorization": f"Bearer {token}",
                             "Content-Type": "application/json"
                         }
-                        payment_password = str(random.randint(100000, 999999))
+                        payment_password = str(secrets.randbelow(900000) + 100000)
                         payload_put = {
                             "payment_password": payment_password,
                             "operation_status": 0
